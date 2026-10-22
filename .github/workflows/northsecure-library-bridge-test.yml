@@ -10,15 +10,16 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Inspect harmless ChatGPT Library response
+      - name: Test harmless Library URL through Chromium
         shell: bash
         run: |
-          set -u
+          set -euxo pipefail
           URL='https://chatgpt.com/api/library/files/libfile_a1f8704dbdb48191883aea55d767eefb/download'
-          code="$(curl -L -sS -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/141.0.0.0 Safari/537.36' -H 'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' -o report.bin -w '%{http_code}' "$URL")"
-          echo "HTTP=$code SIZE=$(wc -c < report.bin)"
-          python3 - <<'PY'
-          from pathlib import Path
-          s=Path('report.bin').read_text('utf-8','replace')
-          print(s[:3500])
-          PY
+          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          echo "CHROME=$CHROME"
+          test -n "$CHROME"
+          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=15000 --dump-dom "$URL" > dom.html 2>chrome.err || true
+          echo "DOM_SIZE=$(wc -c < dom.html)"
+          grep -o -m1 '<title>[^<]*</title>' dom.html || true
+          grep -i -m3 -E 'login|sign in|access denied|forbidden|challenge|cloudflare|download|library' dom.html || true
+          tail -50 chrome.err || true
