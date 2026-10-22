@@ -10,16 +10,48 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - name: Test harmless Library URL through Chromium
+      - name: Test harmless Library URL with full browser session
         shell: bash
         run: |
           set -euxo pipefail
-          URL='https://chatgpt.com/api/library/files/libfile_a1f8704dbdb48191883aea55d767eefb/download'
-          CHROME="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
-          echo "CHROME=$CHROME"
-          test -n "$CHROME"
-          "$CHROME" --headless=new --no-sandbox --disable-gpu --virtual-time-budget=15000 --dump-dom "$URL" > dom.html 2>chrome.err || true
-          echo "DOM_SIZE=$(wc -c < dom.html)"
-          grep -o -m1 '<title>[^<]*</title>' dom.html || true
-          grep -i -m3 -E 'login|sign in|access denied|forbidden|challenge|cloudflare|download|library' dom.html || true
-          tail -50 chrome.err || true
+          python3 -m pip install -q selenium
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb
+          cat > /tmp/test.py <<'PY'
+          import os, time
+          from selenium import webdriver
+          from selenium.webdriver.chrome.options import Options
+          url='https://chatgpt.com/api/library/files/libfile_a1f8704dbdb48191883aea55d767eefb/download'
+          out='/tmp/downloads'
+          os.makedirs(out, exist_ok=True)
+          o=Options()
+          o.add_argument('--no-sandbox')
+          o.add_argument('--disable-dev-shm-usage')
+          o.add_argument('--disable-blink-features=AutomationControlled')
+          o.add_argument('--window-size=1365,900')
+          o.add_argument('--lang=en-US')
+          o.add_experimental_option('prefs', {
+              'download.default_directory': out,
+              'download.prompt_for_download': False,
+              'download.directory_upgrade': True,
+              'safebrowsing.enabled': True,
+          })
+          d=webdriver.Chrome(options=o)
+          try:
+              d.get(url)
+              for i in range(45):
+                  time.sleep(1)
+                  files=os.listdir(out)
+                  if files:
+                      print('DOWNLOADS', files)
+                      break
+                  if i % 5 == 0:
+                      print('T',i,'TITLE',d.title,'URL',d.current_url)
+              print('FINAL_TITLE',d.title)
+              print('FINAL_URL',d.current_url)
+              print('FILES',[(f,os.path.getsize(os.path.join(out,f))) for f in os.listdir(out)])
+              print('BODY',d.page_source[:1000])
+          finally:
+              d.quit()
+          PY
+          xvfb-run -a python3 /tmp/test.py
