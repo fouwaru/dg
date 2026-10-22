@@ -1,0 +1,23 @@
+name: NorthSecure Library Bridge Test
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/northsecure-library-bridge-test.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Test ChatGPT Library download bridge
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://chatgpt.com/api/library/files/libfile_a1f8704dbdb48191883aea55d767eefb/download'
+          code="$(curl -L -sS -o report.bin -w '%{http_code}' "$URL")"
+          echo "HTTP=$code"
+          echo "SIZE=$(wc -c < report.bin)"
+          file report.bin || true
+          head -c 200 report.bin | xxd || true
+          test "$code" = "200"
